@@ -1,6 +1,7 @@
-import PostsView from './views/Posts';
-import ToastsView from './views/Toasts';
-import idb from 'idb';
+import PostsView from "./views/Posts";
+import ToastsView from "./views/Toasts";
+import idb from "idb";
+import { Promise } from "es6-promise";
 
 function openDatabase() {
   // If the browser doesn't support service worker,
@@ -9,11 +10,11 @@ function openDatabase() {
     return Promise.resolve();
   }
 
-  return idb.open('wittr', 1, function(upgradeDb) {
-    var store = upgradeDb.createObjectStore('wittrs', {
-      keyPath: 'id'
+  return idb.open("wittr", 1, function(upgradeDb) {
+    var store = upgradeDb.createObjectStore("wittrs", {
+      keyPath: "id"
     });
-    store.createIndex('by-date', 'time');
+    store.createIndex("by-date", "time");
   });
 }
 
@@ -37,7 +38,7 @@ IndexController.prototype._registerServiceWorker = function() {
 
   var indexController = this;
 
-  navigator.serviceWorker.register('/sw.js').then(function(reg) {
+  navigator.serviceWorker.register("/sw.js").then(function(reg) {
     if (!navigator.serviceWorker.controller) {
       return;
     }
@@ -52,7 +53,7 @@ IndexController.prototype._registerServiceWorker = function() {
       return;
     }
 
-    reg.addEventListener('updatefound', function() {
+    reg.addEventListener("updatefound", function() {
       indexController._trackInstalling(reg.installing);
     });
   });
@@ -60,7 +61,7 @@ IndexController.prototype._registerServiceWorker = function() {
   // Ensure refresh is only called once.
   // This works around a bug in "force update on reload".
   var refreshing;
-  navigator.serviceWorker.addEventListener('controllerchange', function() {
+  navigator.serviceWorker.addEventListener("controllerchange", function() {
     if (refreshing) return;
     window.location.reload();
     refreshing = true;
@@ -76,8 +77,10 @@ IndexController.prototype._showCachedMessages = function() {
     // posts from IDB
     if (!db || indexController._postsView.showingPosts()) return;
 
-    var index = db.transaction('wittrs')
-      .objectStore('wittrs').index('by-date');
+    var index = db
+      .transaction("wittrs")
+      .objectStore("wittrs")
+      .index("by-date");
 
     return index.getAll().then(function(messages) {
       indexController._postsView.addPosts(messages.reverse());
@@ -87,8 +90,8 @@ IndexController.prototype._showCachedMessages = function() {
 
 IndexController.prototype._trackInstalling = function(worker) {
   var indexController = this;
-  worker.addEventListener('statechange', function() {
-    if (worker.state == 'installed') {
+  worker.addEventListener("statechange", function() {
+    if (worker.state == "installed") {
       indexController._updateReady(worker);
     }
   });
@@ -96,12 +99,12 @@ IndexController.prototype._trackInstalling = function(worker) {
 
 IndexController.prototype._updateReady = function(worker) {
   var toast = this._toastsView.show("New version available", {
-    buttons: ['refresh', 'dismiss']
+    buttons: ["refresh", "dismiss"]
   });
 
   toast.answer.then(function(answer) {
-    if (answer != 'refresh') return;
-    worker.postMessage({action: 'skipWaiting'});
+    if (answer != "refresh") return;
+    worker.postMessage({ action: "skipWaiting" });
   });
 };
 
@@ -111,36 +114,38 @@ IndexController.prototype._openSocket = function() {
   var latestPostDate = this._postsView.getLatestPostDate();
 
   // create a url pointing to /updates with the ws protocol
-  var socketUrl = new URL('/updates', window.location);
-  socketUrl.protocol = 'ws';
+  var socketUrl = new URL("/updates", window.location);
+  socketUrl.protocol = "ws";
 
   if (latestPostDate) {
-    socketUrl.search = 'since=' + latestPostDate.valueOf();
+    socketUrl.search = "since=" + latestPostDate.valueOf();
   }
 
   // this is a little hack for the settings page's tests,
   // it isn't needed for Wittr
-  socketUrl.search += '&' + location.search.slice(1);
+  socketUrl.search += "&" + location.search.slice(1);
 
   var ws = new WebSocket(socketUrl.href);
 
   // add listeners
-  ws.addEventListener('open', function() {
+  ws.addEventListener("open", function() {
     if (indexController._lostConnectionToast) {
       indexController._lostConnectionToast.hide();
     }
   });
 
-  ws.addEventListener('message', function(event) {
+  ws.addEventListener("message", function(event) {
     requestAnimationFrame(function() {
       indexController._onSocketMessage(event.data);
     });
   });
 
-  ws.addEventListener('close', function() {
+  ws.addEventListener("close", function() {
     // tell the user
     if (!indexController._lostConnectionToast) {
-      indexController._lostConnectionToast = indexController._toastsView.show("Unable to connect. Retrying…");
+      indexController._lostConnectionToast = indexController._toastsView.show(
+        "Unable to connect. Retrying…"
+      );
     }
 
     // try and reconnect in 5 seconds
@@ -157,20 +162,24 @@ IndexController.prototype._onSocketMessage = function(data) {
   this._dbPromise.then(function(db) {
     if (!db) return;
 
-    var tx = db.transaction('wittrs', 'readwrite');
-    var store = tx.objectStore('wittrs');
+    var tx = db.transaction("wittrs", "readwrite");
+    var store = tx.objectStore("wittrs");
     messages.forEach(function(message) {
       store.put(message);
     });
 
     // limit store to 30 items
-    store.index('by-date').openCursor(null, "prev").then(function(cursor) {
-      return cursor.advance(30);
-    }).then(function deleteRest(cursor) {
-      if (!cursor) return;
-      cursor.delete();
-      return cursor.continue().then(deleteRest);
-    });
+    store
+      .index("by-date")
+      .openCursor(null, "prev")
+      .then(function(cursor) {
+        return cursor.advance(30);
+      })
+      .then(function deleteRest(cursor) {
+        if (!cursor) return;
+        cursor.delete();
+        return cursor.continue().then(deleteRest);
+      });
   });
 
   this._postsView.addPosts(messages);
